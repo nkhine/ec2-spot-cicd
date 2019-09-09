@@ -1,0 +1,15 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Cloud Watch log groups.
+
+Resources:
+
+  JenkinsLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: 30
+
+Outputs:
+  JenkinsLogGroup:
+    Value: !Ref JenkinsLogGroup

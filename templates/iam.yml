@@ -1,0 +1,223 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  IAM nested stack
+
+Parameters:
+  DeploymentArtifactsS3Bucket:
+    Type: String
+  ECSCluster:
+    Type: String
+Resources:
+  IAMRoleAMILookupLambdaExecution: # IAM Role that allows the AMILookupLambdaFunction to look up the latest Amazon Linux AMI and write logs to CloudWatch Logs
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: AMILookupExecution
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action: ec2:DescribeImages
+            Resource: "*"
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ecs-tasks.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      RoleName: ECSTaskRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  IAMRoleJenkins:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: JenkinsPolicy
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: s3:*
+            Resource: !Sub "arn:aws:s3:::${DeploymentArtifactsS3Bucket}/*"
+
+  InstanceProfileJenkins:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+      - !Ref IAMRoleJenkins
+
+  IAMUserJenkins:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+      - PolicyName: SpotAgentPolicy
+        # Policy is documented at https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-fleet-requests.html#spot-fleet-iam-users
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - ec2:*
+            - iam:ListInstanceProfiles
+            - iam:ListRoles
+            - iam:PassRole
+            Resource: "*"
+      - PolicyName: ECSAgentPolicy
+        # Policy is documented at https://wiki.jenkins.io/display/JENKINS/Amazon+EC2+Container+Service+Plugin
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - ecs:DescribeContainerInstances
+            - ecs:DescribeTaskDefinition
+            - ecs:ListClusters
+            - ecs:ListTaskDefinitions
+            - ecs:RegisterTaskDefinition
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - ecs:ListContainerInstances
+            - ecs:StopTask
+            Resource: !Ref ECSCluster
+          - Effect: Allow
+            Action:
+            - ecs:RunTask
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - ecs:DescribeTasks
+            - ecs:StopTask
+            Resource: "*"
+      UserName: MW-MGM-Jenkins
+
+  IAMRoleECS:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+      Policies:
+      - PolicyName: EC2DescribeInstances
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - logs:CreateLogGroup
+            Resource: "*"
+      Path: /
+
+  InstanceProfileECS:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+      - !Ref IAMRoleECS
+
+  IAMRoleECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole
+      Path: /
+
+  ECSServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Properties:
+      AWSServiceName: "ecs.amazonaws.com"
+      Description: "Role to enable Amazon ECS to manage your cluster."
+
+  IAMUserJenkinsAccessKey:
+    DependsOn: IAMUserJenkins
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName:
+        Ref: IAMUserJenkins
+
+
+Outputs:
+  InstanceProfileECS:
+    Value: !Ref InstanceProfileECS
+
+  IAMRoleAMILookupLambdaExecution:
+    Value: !GetAtt IAMRoleAMILookupLambdaExecution.Arn
+
+  InstanceProfileJenkins:
+    Value: !Ref InstanceProfileJenkins
+
+  IAMRoleJenkins:
+    Value: !GetAtt IAMRoleJenkins.Arn
+
+  ECSTaskRole:
+    Value: !GetAtt ECSTaskRole.Arn
+
+  IAMUserJenkinsAccessKeyID:
+    Description: API Access for Jenkins User
+    Value:
+      Ref: IAMUserJenkinsAccessKey
+
+  IAMUserJenkinsAccessKeyAccessKeySecret:
+    Description: The Access Key Secret for the Jenkins User
+    Value:
+      Fn::GetAtt:
+        - IAMUserJenkinsAccessKey
+        - SecretAccessKey

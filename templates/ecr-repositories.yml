@@ -1,0 +1,22 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  ECR nested stack
+
+Resources:
+  MwJenkinsRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: mw-jenkins
+      Tags:
+        - Key: CloudFormationArn
+          Value:
+            Ref: 'AWS::StackId'
+Outputs:
+  MwJenkinsRepositoryArn:
+    Description: Mw-Jenkins search ECR ARN
+    Value:
+      Fn::GetAtt:
+        - MwJenkinsRepository
+        - Arn

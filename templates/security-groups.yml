@@ -1,0 +1,29 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Security group stack
+
+Parameters:
+  VPC:
+    Type: String
+
+Resources:
+  SgVPCEndpoints:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Security Group for VPC endpoints
+      VpcId: !Ref VPC
+      GroupDescription: This security group is used to control access to the container
+      SecurityGroupIngress:
+      - IpProtocol: TCP
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
+
+
+Outputs:
+  SgVPCEndpoints:
+    Value: !Ref SgVPCEndpoints

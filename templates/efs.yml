@@ -1,0 +1,49 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  EFS nested stack
+
+Parameters:
+  SubnetPublicA:
+    Type: String
+  SubnetPublicB:
+    Type: String
+  SubnetPublicC:
+    Type: String
+  SecurityGroupEFS:
+    Type: String
+Resources:
+
+  EFSJenkinsHomeVolume:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: generalPurpose
+
+  EFSMountTargetJenkinsHomeVolumeA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSJenkinsHomeVolume
+      SecurityGroups:
+      - !Ref SecurityGroupEFS
+      SubnetId: !Ref SubnetPublicA
+
+  EFSMountTargetJenkinsHomeVolumeB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSJenkinsHomeVolume
+      SecurityGroups:
+      - !Ref SecurityGroupEFS
+      SubnetId: !Ref SubnetPublicB
+
+  EFSMountTargetJenkinsHomeVolumeC:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSJenkinsHomeVolume
+      SecurityGroups:
+      - !Ref SecurityGroupEFS
+      SubnetId: !Ref SubnetPublicC
+
+Outputs:
+  EFSJenkinsHomeVolume:
+    Value: !Ref EFSJenkinsHomeVolume

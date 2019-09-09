@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Jenkins long running ECS service.
+Parameters:
+  JenkinsLogGroup:
+    Type: String
+  ECSTaskRole:
+    Type: String
+  IAMRoleJenkins:
+    Type: String
+  ECSCluster:
+    Type: String
+  JenkinsMasterALBTargetGroupECS:
+    Type: String
+  SecurityGroupJenkins:
+    Type: String
+  SubnetPrivateA:
+   Type: String
+  SubnetPrivateB:
+   Type: String
+  SubnetPrivateC:
+   Type: String
+  ServiceDiscoveryJenkinsMaster:
+    Type: String
+
+Resources:
+
+  ECSTaskDefinitionJenkinsMaster:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      TaskRoleArn: !Ref ECSTaskRole
+      Family: !Sub '${AWS::StackName}-JenkinsMaster'
+      ContainerDefinitions:
+      - Cpu: 512
+        Essential: true
+        Image: jenkins/jenkins:lts
+        Memory: 1536
+        MountPoints:
+        - SourceVolume: JENKINS_HOME
+          ContainerPath: /var/jenkins_home
+        Name: MW-MGM-JenkinsMasterContainer
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-region: !Ref AWS::Region
+            awslogs-group: !Ref JenkinsLogGroup
+        PortMappings:
+        - ContainerPort: 5000
+          HostPort: 5000
+        - ContainerPort: 8080
+          HostPort: 8080
+        - ContainerPort: 50000
+          HostPort: 50000
+      ExecutionRoleArn: !Ref IAMRoleJenkins
+      NetworkMode: awsvpc
+      PlacementConstraints:
+      - Type: memberOf
+        Expression: attribute:lifecycle != spot
+      Volumes:
+      - Host:
+          SourcePath: /mnt/efs/jenkins_home
+        Name: JENKINS_HOME
+
+  ECSServiceJenkinsMaster:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      HealthCheckGracePeriodSeconds: 120
+      LoadBalancers:
+      - ContainerName: MW-MGM-JenkinsMasterContainer
+        ContainerPort: 8080
+        TargetGroupArn: !Ref JenkinsMasterALBTargetGroupECS
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+          - !Ref SecurityGroupJenkins
+          Subnets:
+          - !Ref SubnetPrivateA
+          - !Ref SubnetPrivateB
+          - !Ref SubnetPrivateC
+      ServiceRegistries:
+      - ContainerName: MW-MGM-JenkinsMasterContainer
+        RegistryArn: !Ref ServiceDiscoveryJenkinsMaster
+      TaskDefinition: !Ref ECSTaskDefinitionJenkinsMaster

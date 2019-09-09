@@ -1,0 +1,121 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  ALB nested stack
+
+Parameters:
+  SubnetPublicA:
+    Type: String
+  SubnetPublicB:
+    Type: String
+  SubnetPublicC:
+    Type: String
+  SecurityGroupJenkinsALB:
+    Type: String
+  VPC:
+    Type: String
+  CertificateARN:
+    Type: String
+Resources:
+
+  JenkinsMasterALB: # This is the Application Load Balancer that resides in front of your Jenkins Master instance and is responsible for port-mapping requests from TCP:80 to TCP:8080
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: JenkinsMasterALB
+      Scheme: internet-facing
+      SecurityGroups:
+      - !Ref SecurityGroupJenkinsALB
+      Subnets:
+      - !Ref SubnetPublicA
+      - !Ref SubnetPublicB
+      - !Ref SubnetPublicC
+
+
+  JenkinsMasterALBTargetGroupECS: # This is the Target Group used by the JenkinsMasterALB load balancer when Jenkins is running in a container on an ECS cluster
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /login
+      HealthCheckPort: 8080
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200
+      Name: JenkinsMasterECSTargetGroup
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      UnhealthyThresholdCount: 4
+      VpcId: !Ref VPC
+
+  JenkinsMasterALBListener: # This is the ALB Listener used to access the Jenkins Master
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      # DefaultActions:
+      # - Type: forward
+      #   TargetGroupArn: !Ref JenkinsMasterALBTargetGroupEC2
+      DefaultActions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: "443"
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref JenkinsMasterALB
+      Port: 80
+      Protocol: HTTP
+
+  JenkinsMasterHTTPSALBListener: # This is the HTTPS ALB Listener used to access the Jenkins Master
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertificateARN
+        # - CertificateArn: !FindInMap
+        #     - SSLmapping
+        #     - ssl1
+        #     - !FindInMap
+        #       - AWSRegionsNameMapping
+        #       - !Ref 'AWS::Region'
+        #       - RegionName
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref JenkinsMasterALBTargetGroupECS
+      LoadBalancerArn: !Ref JenkinsMasterALB
+      Port: 443
+      Protocol: HTTPS
+
+  JenkinsMasterALBListenerRuleEC2: # The ALB Listener rule that forwards all traffic destined for the Jenkins Master to the appropriate Target Group
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref JenkinsMasterALBTargetGroupECS
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/*"
+      ListenerArn: !Ref JenkinsMasterHTTPSALBListener
+      Priority: 2
+
+  JenkinsMasterALBListenerRuleECS: # The ALB Listener rule that forwards all traffic destined for the Jenkins Master to the appropriate Target Group
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref JenkinsMasterALBTargetGroupECS
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/*"
+      ListenerArn: !Ref JenkinsMasterHTTPSALBListener
+      Priority: 1
+
+Outputs:
+  JenkinsMasterALBTargetGroupECS:
+    Value: !Ref JenkinsMasterALBTargetGroupECS
+  JenkinsELB:
+    Value: !GetAtt JenkinsMasterALB.DNSName

@@ -1,0 +1,13 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  S3 nested stack - where the deployment artifacts will be uploaded to.
+
+Resources:
+  DeploymentArtifactsS3Bucket: # This is an S3 bucket where the deployment artifacts will be uploaded to
+    Type: AWS::S3::Bucket
+Outputs:
+  DeploymentArtifactsS3Bucket:
+    Description: The name of the S3 bucket where deployment artifacts are uploaded to.
+    Value: !Ref DeploymentArtifactsS3Bucket

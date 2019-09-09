@@ -1,0 +1,185 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Main stack
+
+Mappings:
+  SSLmapping:
+    ssl1:
+      Ireland: 'arn:aws:acm:eu-west-1:****:certificate/****-****-****-****'
+  AWSRegionsNameMapping:
+    eu-west-1:
+      RegionName: Ireland
+    eu-west-2:
+      RegionName: London
+
+Parameters:
+  CurrentIP:
+    Type: String
+    Default: xxx-xxx-xxx-xxx/24
+  KeyName:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the ECS instances
+    Default: 'xx-xxx'
+  InstanceType:
+    Description: The ECS EC2 instance type
+    Type: String
+    Default: t2.small
+    ConstraintDescription: must be a valid EC2 instance type
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - c3.4xlarge
+      - c3.8xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - r3.large
+      - r3.xlarge
+      - r3.2xlarge
+      - r3.4xlarge
+      - r3.8xlarge
+      - i2.xlarge
+      - i2.2xlarge
+      - i2.4xlarge
+      - i2.8xlarge
+      - d2.xlarge
+      - d2.2xlarge
+      - d2.4xlarge
+      - d2.8xlarge
+      - hi1.4xlarge
+      - hs1.8xlarge
+      - cr1.8xlarge
+      - cc2.8xlarge
+
+Resources:
+  LaunchTemplates:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        KeyPair: !Ref KeyName
+        SecurityGroupJenkins: !GetAtt EC2VPC.Outputs.SecurityGroupJenkins
+        InstanceProfileECS: !GetAtt IAM.Outputs.InstanceProfileECS
+        EFSJenkinsHomeVolume: !GetAtt EFS.Outputs.EFSJenkinsHomeVolume
+        IAMRoleAMILookupLambdaExecution: !GetAtt IAM.Outputs.IAMRoleAMILookupLambdaExecution
+        InstanceProfileJenkins: !GetAtt IAM.Outputs.InstanceProfileJenkins
+        SubnetPublicA: !GetAtt EC2VPC.Outputs.SubnetPublicA
+        SubnetPublicB: !GetAtt EC2VPC.Outputs.SubnetPublicB
+        SubnetPublicC: !GetAtt EC2VPC.Outputs.SubnetPublicC
+      TemplateURL: templates/launch-templates.yml
+
+  DNS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        VPC: !GetAtt EC2VPC.Outputs.VPC
+      TemplateURL: templates/dns.yml
+        
+  ELB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        CertificateARN: !FindInMap
+          - SSLmapping
+          - ssl1
+          - !FindInMap
+            - AWSRegionsNameMapping
+            - !Ref 'AWS::Region'
+            - RegionName
+        SubnetPublicA: !GetAtt EC2VPC.Outputs.SubnetPublicA
+        SubnetPublicB: !GetAtt EC2VPC.Outputs.SubnetPublicB
+        SubnetPublicC: !GetAtt EC2VPC.Outputs.SubnetPublicC
+        SecurityGroupJenkinsALB: !GetAtt EC2VPC.Outputs.SecurityGroupJenkinsALB
+        VPC: !GetAtt EC2VPC.Outputs.VPC
+      TemplateURL: templates/elb.yml
+
+  EFS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        SubnetPublicA: !GetAtt EC2VPC.Outputs.SubnetPublicA
+        SubnetPublicB: !GetAtt EC2VPC.Outputs.SubnetPublicB
+        SubnetPublicC: !GetAtt EC2VPC.Outputs.SubnetPublicC
+        SecurityGroupEFS: !GetAtt EC2VPC.Outputs.SecurityGroupEFS
+      TemplateURL: templates/efs.yml
+
+  IAM:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        ECSCluster: !GetAtt ECSCluster.Outputs.ECSCluster
+        DeploymentArtifactsS3Bucket:  !GetAtt S3.Outputs.DeploymentArtifactsS3Bucket
+      TemplateURL: templates/iam.yml
+
+  ECSCluster:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: templates/ecs-cluster.yml
+
+  S3:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: templates/s3.yml
+
+  EC2VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        CurrentIP: !Ref CurrentIP
+      TemplateURL: templates/vpc.yml
+
+  Logs:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: templates/log-groups.yml
+
+  JenkinsService:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        JenkinsLogGroup: !GetAtt Logs.Outputs.JenkinsLogGroup
+        ECSTaskRole: !GetAtt IAM.Outputs.ECSTaskRole
+        ECSCluster: !GetAtt ECSCluster.Outputs.ECSCluster
+        IAMRoleJenkins: !GetAtt IAM.Outputs.IAMRoleJenkins
+        JenkinsMasterALBTargetGroupECS: !GetAtt ELB.Outputs.JenkinsMasterALBTargetGroupECS
+        SecurityGroupJenkins: !GetAtt EC2VPC.Outputs.SecurityGroupJenkins
+        SubnetPrivateA: !GetAtt EC2VPC.Outputs.SubnetPrivateA
+        SubnetPrivateB: !GetAtt EC2VPC.Outputs.SubnetPrivateB
+        SubnetPrivateC: !GetAtt EC2VPC.Outputs.SubnetPrivateC
+        ServiceDiscoveryJenkinsMaster: !GetAtt DNS.Outputs.ServiceDiscoveryJenkinsMaster
+      TemplateURL: templates/services/jenkins.yml
+
+  PrivateLink:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        VPC: !GetAtt EC2VPC.Outputs.VPC
+        SubnetPrivateA: !GetAtt EC2VPC.Outputs.SubnetPrivateA
+        SubnetPrivateB: !GetAtt EC2VPC.Outputs.SubnetPrivateB
+        SubnetPrivateC: !GetAtt EC2VPC.Outputs.SubnetPrivateC
+        RouteTablePrivate: !GetAtt EC2VPC.Outputs.RouteTablePrivate
+        SgVPCEndpoints: !GetAtt SecurityGroups.Outputs.SgVPCEndpoints
+      TemplateURL: templates/private-link.yml
+
+  SecurityGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        VPC: !GetAtt EC2VPC.Outputs.VPC
+      TemplateURL: templates/security-groups.yml
+
+Outputs:
+  JenkinsServiceURL:
+    Description: The URL endpoint for the load balancer, CNAME away!
+    Value: !GetAtt ELB.Outputs.JenkinsELB

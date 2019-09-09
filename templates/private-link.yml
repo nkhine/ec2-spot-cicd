@@ -1,0 +1,128 @@
+
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  AWS PrivateLink endpoints for ECR and ECS, these service endpoints appear as elastic
+  network interfaces with a private IP address in your VPC.
+Parameters:
+  VPC:
+    Type: String
+  SubnetPrivateA:
+    Type: String
+  SubnetPrivateB:
+    Type: String
+  SubnetPrivateC:
+    Type: String
+  RouteTablePrivate:
+    Type: String
+  SgVPCEndpoints:
+    Type: String
+
+Resources:
+  VPCEndpointS3:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      VpcId: !Ref VPC
+      RouteTableIds:
+        - !Ref RouteTablePrivate
+
+  VPCEndpointCloudwatchLogs:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointECS:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecs
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointECSagent:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecs-agent
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointECStelemetry:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecs-telemetry
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointCloudformation:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.cloudformation
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointECRapi:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+
+  VPCEndpointECRdkr:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - Ref: SgVPCEndpoints
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      SubnetIds:
+        - !Ref SubnetPrivateA
+        - !Ref SubnetPrivateB
+        - !Ref SubnetPrivateC
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC

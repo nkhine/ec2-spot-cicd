@@ -1,0 +1,285 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Deploys a VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an Internet Gateway, with a default
+  route on the public subnets. It deploys a pair of NAT Gateways (one in each AZ),
+  and default routes for them in the private subnets.
+
+Parameters:
+  CurrentIP:
+    Type: String
+Resources:
+
+  VPC: # This is the VPC that the CI/CD environment will be running in
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/21
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM VPC
+
+  SubnetPublicA: # The first of three subnets defined within the VPC...
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: 192.168.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Public Subnet A
+
+  SubnetPublicB: # ... and the second of three subnets...
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: 192.168.1.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Public Subnet B
+
+  SubnetPublicC: # ... and the third of three subnets defined within the VPC
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      CidrBlock: 192.168.2.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Public Subnet C
+
+  SubnetPrivateA: # The first of three subnets defined within the VPC...
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: 192.168.3.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Private Subnet A
+
+  SubnetPrivateB: # ... and the second of three subnets...
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: 192.168.4.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Private Subnet B
+
+  SubnetPrivateC: # ... and the third of three subnets defined within the VPC
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      CidrBlock: 192.168.5.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Private Subnet C
+
+  InternetGateway: # Create an Internet Gateway in order to allow EC2 instances to be accessible via the Internet
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Internet Gateway
+
+  InternetGatewayAttachment: # Once both the VPC and Internet Gateway have been created, attach the Internet Gateway to the VPC
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  EIPNATGateway:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIPNATGateway.AllocationId
+      SubnetId: !Ref SubnetPublicA
+
+  RouteTablePublic: # Create a route table which will be used within the VPC
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Public Route Table
+
+  RouteTablePrivate: # Create a route table which will be used within the VPC
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: JENKINS-MW-MGM Private Route Table
+
+  DefaultRoutePublic: # Add a default route to the route table, pointing to the Internet Gateway
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTablePublic
+
+  DefaultRoutePrivate: # Add a default route to the route table, pointing to the NAT Gateway
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+      RouteTableId: !Ref RouteTablePrivate
+
+  SubnetPublicARouteTableAssociation: # Associate the route table with the first of the three subnets in the VPC...
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetPublicA
+
+  SubnetPublicBRouteTableAssociation: # ... and the second of three subnets...
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetPublicB
+
+  SubnetPublicCRouteTableAssociation: # ... and the third of the three subnets in the VPC
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetPublicC
+
+  SubnetPrivateARouteTableAssociation: # Associate the route table with the first of the three subnets in the VPC...
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref SubnetPrivateA
+
+  SubnetPrivateBRouteTableAssociation: # ... and the second of three subnets...
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref SubnetPrivateB
+
+  SubnetPrivateCRouteTableAssociation: # ... and the third of the three subnets in the VPC
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref SubnetPrivateC
+
+  #Security
+  SecurityGroupJenkins: # A Security Group that allows ingress access for SSH and the default port that a Jenkins Master will run on
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Spot MW-MGM Jenkins Security Group
+      GroupDescription: A Security Group that allows ingress access for SSH and the default port that a Jenkins Master will run on
+      SecurityGroupIngress:
+      - Description: SSH access from the IP address that the workshop participant is using.
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref CurrentIP
+      - Description: SSH access from hosts within the Spot MW-MGM VPC - required for Build Agent deployments on to EC2 Spot instances.
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 192.168.0.0/21
+      - Description: SSH access from Normans house
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 151.231.98.0/24
+      - Description: HTTP (8080) access from Normans house.
+        IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 151.231.98.0/24
+      - Description: HTTP (8080) access from the IP address that the workshop participant is using.
+        IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: !Ref CurrentIP
+      - Description: HTTP (8080) access from hosts within the Spot MW-MGM VPC, including the ALBs that reside in front of Jenkins, and Build Agents running on ECS nodes.
+        IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 192.168.0.0/21
+      - Description: JNLP (5000) access from hosts within the Spot MW-MGM VPC - required for Build Agent deployments on ECS nodes to communicate back with the Jenkins Master container.
+        IpProtocol: tcp
+        FromPort: 5000
+        ToPort: 5000
+        #CidrIp: 192.168.0.0/21
+        # Limited CIDR commented out as we had an issue in the first re:Invent workshop that needs further investigation
+        CidrIp: 0.0.0.0/0
+      - Description: JNLP (50000) access from hosts within the Spot MW-MGM VPC - the legacy port that used to be required for Build Agent deployments on ECS nodes to communicate back with the Jenkins Master container.
+        IpProtocol: tcp
+        FromPort: 50000
+        ToPort: 50000
+        #CidrIp: 192.168.0.0/21
+        # Limited CIDR commented out as we had an issue in the first re:Invent workshop that needs further investigation
+        CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  SecurityGroupJenkinsALB: # A Security Group that allows ingress access for HTTP/HTTPS on ALBs and used to access the Jenkins Master
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Spot MW-MGM Jenkins ALB Security Group
+      GroupDescription: A Security Group that allows ingress access for HTTP/HTTPS on ALBs and used to access the Jenkins Master
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  SecurityGroupEFS:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Spot MW-MGM EFS Security Group
+      GroupDescription: A Security Group that allows access to EFS volume targets from the Jenkins Securiy Group
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 2049
+        ToPort: 2049
+        SourceSecurityGroupId: !Ref SecurityGroupJenkins
+      VpcId: !Ref VPC
+
+Outputs:
+  SubnetPublicA:
+    Value: !Ref SubnetPublicA
+  SubnetPublicB:
+    Value: !Ref SubnetPublicB
+  SubnetPublicC:
+    Value: !Ref SubnetPublicC
+  SubnetPrivateA:
+    Value: !Ref SubnetPrivateA
+  SubnetPrivateB:
+    Value: !Ref SubnetPrivateB
+  SubnetPrivateC:
+    Value: !Ref SubnetPrivateC
+  SecurityGroupEFS:
+    Value: !Ref SecurityGroupEFS
+  SecurityGroupJenkinsALB:
+    Value: !Ref SecurityGroupJenkinsALB
+  SecurityGroupJenkins:
+    Value: !Ref SecurityGroupJenkins
+  RouteTablePrivate:
+    Value: !Ref RouteTablePrivate
+  VPC:
+    Value: !Ref VPC
